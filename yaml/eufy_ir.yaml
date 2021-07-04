@@ -1,0 +1,307 @@
+esphome:
+  name: eufy_ir
+  platform: ESP8266
+  board: d1_mini # the actual device you have, used for pin mapping.
+
+# wifi details in here
+<<: !include ./secrets.yaml
+
+# this says if wifi is lost make an AP with a web page to add new wifi details
+captive_portal:
+
+logger:
+
+# this means enable homeassistant API
+api:
+
+# track some internal values
+globals:
+  - id: vaccum_power_level
+    type: int
+    restore_value: no
+    initial_value: '1'
+# vaccum power level
+# 1 max
+# 2 boost_iq
+  - id: robot_action
+    type: int
+    restore_value: no
+    initial_value: '0'
+# robot actions are
+# 0 inactive
+# 1 auto
+# 2 single room
+# 3 spot clean
+# 4 edge clean
+# 5 going home
+# 6 error
+# 7 charging
+
+# no remote_receiver, robot doesn't talk back
+# remote_receiver:  # not currently connected.
+#   pin: 
+#     number: D3  # this pin might have an issue with boot blocking.
+#     inverted: True
+#   dump: all
+
+remote_transmitter:
+  pin: D2 
+  # Infrared remotes use a 50% carrier signal
+  carrier_duty_percent: 50%
+
+# LED behaviour from the manual.
+# no lights = sleeping
+# Orange flashing = charging
+# Orange solid = low battery + returning to base
+# BLUE solid = standby/cleaning/fully charged
+# RED flashing = error
+# RED solid = error
+
+binary_sensor:
+  - platform: gpio
+    pin:
+      number: D8 # brown from circuit , blue to esp
+    name: "blue_led"
+    id: blue_led
+
+sensor:
+  - platform: pulse_meter
+    pin: D7 # orange from circuit , purple to esp
+    name: orange_pulse_led
+    id: orange_pulse_led
+    internal: True
+    timeout: 5s 
+
+  - platform: pulse_meter
+    pin: D6 # yellow from circuit , gray to esp
+    name: red_pulse_led
+    id: red_pulse_led
+    internal: True
+    timeout: 5s
+
+# publish robot power level based on assumed data.
+text_sensor:
+  - platform: template
+    name: "robot power level"
+    lambda: |-
+      // handle orange light status
+      if (id(vaccum_power_level) ==1) {
+         return {"max power"};
+      }
+      else if (id(vaccum_power_level) ==2){
+        return {"boost IQ"};
+      }
+      else{
+        return {"N/A"};
+      }
+
+# publish robot status, based on LED's
+  - platform: template
+    name: "robot status"
+    lambda: |-
+      // handle orange light status
+      if (id(orange_pulse_led).state >0 & id(orange_pulse_led).state <2600){
+        id(robot_action)=7;
+        return {"charging"};
+      }
+      if (id(orange_pulse_led).state >=2500){
+        id(robot_action)=5;
+        return {"low battery, returning to base"};
+      }
+      // handle red led status
+      if (id(red_pulse_led).state >0){
+        id(robot_action)=6;
+        return {"HELP, robot requires immediate attention"};
+      }
+      // handle no LED status
+      if (id(blue_led).state ==0 & id(orange_pulse_led).state ==0 & id(red_pulse_led).state ==0) {
+        id(robot_action)=0;
+        return {"sleeping"};
+        }
+      // handle blue LED status
+      if (id(blue_led).state){
+        // check our robot_action for what its doing
+        if (id(robot_action) ==1){
+          return {"auto clean"};
+        }
+        else if(id(robot_action)==2){
+          return {"single room"};
+        }
+        else if (id(robot_action)==3){
+          return {"spot clean"};
+        }
+        else if (id(robot_action)==4){
+          return {"edge clean"};
+        }
+        else{
+          id(robot_action)=0;
+          return {"Ready"};
+        }
+        
+      }
+      // shouldn't reach this far, but add in just in case
+      id(robot_action)=0;
+      return {"unknown"};
+      
+    update_interval: 5s
+
+# interestingly enough powerlevel is communicated to the robot as part of the activate calls.
+# these captured below all start a max power
+switch:
+  - platform: template
+    name: vaccum_single_room
+    turn_on_action:
+      then:
+        - globals.set:
+            id: vaccum_power_level
+            value: '1'
+        - globals.set:    
+            id: robot_action
+            value: '2'
+        - remote_transmitter.transmit_raw:
+            carrier_frequency: 38kHz
+            code: [2997, -2985, 420, -577, 416, -1572, 418, -1573, 416, -578, 417, -1570, 419, -598, 396, -598, 397, -598, 396, -1570, 420, -597, 397, -1570, 419, -578, 417, -1571, 418, -1570, 420, -577, 417, -598, 396, -598, 397, -598, 396, -598, 397, -1572,
+417, -578, 417, -598, 397, -577, 417, -598, 396, -598, 397, -598, 396, -1571, 418, -1526, 464, -597, 397, -598, 396, -598, 397, -598, 397, -1570, 419, -1570, 420, -1570, 419, -1571, 418, -1571, 473, -1519, 417, -1570, 419, -1571, 419, -578, 416, -1571,
+471, -525, 417, -1573, 417, -577, 417, -598, 396, -1572, 417, -1572, 418]
+
+  - platform: template
+    name: go_home
+    turn_on_action:
+      - globals.set:
+          id: robot_action
+          value: '5'
+      - remote_transmitter.transmit_raw:
+          carrier_frequency: 38khz
+          code: [2985, -2995, 507, -509, 477, -1488, 501, -1436, 552, -518, 476, -1489, 500, -517, 477, -518, 476, -519, 474, -1437, 552, -1491, 497, -1492, 498, -517, 476, -1492, 497, -1489, 500, -1492, 496, -1490, 499, -518, 475, -519, 475, -519, 475,
+-519, 475, -520, 475, -518, 476, -518, 476, -1489, 499, -518, 476, -519, 474, -519, 476, -519, 474, -519, 475, -1491, 487, -1501, 499, -517, 476, -1491, 498, -1490, 498, -1490, 500, -1489, 499, -1490, 498, -1490, 499, -1490, 498, -1490, 499, -518, 475,
+-1492, 498, -517, 476, -1490, 499, -1491, 498, -1490, 498, -518, 476, -1491, 498]
+
+  - platform: template
+    name: auto_start
+    turn_on_action:
+      - globals.set:
+          id: vaccum_power_level
+          value: '1'
+      - globals.set:
+          id: robot_action
+          value: '1'
+      - remote_transmitter.transmit_raw:
+          carrier_frequency: 38khz
+          code: [2909, -3072, 525, -491, 478, -1490, 499, -1489, 500, -516, 479, -1490, 499, -516, 478, -517, 477, -517, 477, -518, 477, -516, 478, -517, 477, -517, 477, -1488, 501, -1490, 499, -517, 477, -517, 478, -516, 478, -517, 477, -517, 478, -1490,
+498, -516, 479, -516, 478, -516, 478, -517, 477, -517, 478, -516, 478, -1489, 500, -515, 479, -1488, 501, -516, 478, -516, 478, -517, 477, -1489, 501, -1488, 446, -1545, 499, -1490, 499, -1490, 500, -1490, 499, -1488, 501, -1489, 500, -1490, 499, -516,
+478, -1489, 504, -513, 478, -1492, 497, -516, 478, -1489, 501, -1489, 500]
+
+  - platform: template
+    name: stop
+    turn_on_action:
+      - globals.set:
+          id: vaccum_power_level
+          value: '1'
+      - globals.set:
+          id: robot_action
+          value: '0'
+      - remote_transmitter.transmit_raw:
+          carrier_frequency: 38khz
+          code: [2986, -2993, 515, -501, 478, -1490, 499, -1489, 499, -517, 477, -1489, 500, -516, 477, -518, 476, -517, 477, -517, 477, -1488, 501, -516, 477, -517, 477, -1490, 499, -1488, 501, -1489, 499, -1489, 500, -516, 477, -518, 476, -518, 476, -518,
+477, -517, 476, -518, 476, -517, 477, -1489, 500, -516, 477, -518, 476, -518, 476, -1490, 498, -518, 477, -517, 476, -1489, 500, -517, 477, -1489, 499, -1490, 499, -1488, 496, -1494, 499, -1488, 499, -1492, 496, -1490, 499, -1492, 496, -1491, 498,
+-1491, 497, -519, 476, -519, 474, -1490, 498, -520, 476, -520, 473, -1492, 497]
+
+  - platform: template
+    name: spot_clean
+    turn_on_action:
+      - globals.set:
+          id: vaccum_power_level
+          value: '1'
+      - globals.set:
+          id: robot_action
+          value: '3'
+      - remote_transmitter.transmit_raw:
+          carrier_frequency: 38khz
+          code: [2912, -3075, 496, -519, 476, -1492, 499, -1492, 498, -518, 474, -1495, 495, -520, 474, -521, 472, -523, 471, -1498, 495, -519, 475, -520, 473, -522, 472, -1497, 496, -1493, 492, -524, 474, -520, 474, -521, 472, -522, 474, -521, 471, -1495,
+496, -522, 475, -520, 469, -525, 471, -524, 472, -522, 474, -520, 473, -1494, 499, -518, 474, -1493, 498, -1491, 496, -1495, 498, -518, 474, -1495, 498, -1492, 497, -1493, 497, -1493, 497, -1492, 413, -1576, 500, -1490, 498, -1494, 496, -518, 476,
+-519, 476, -1492, 498, -1492, 498, -517, 476, -519, 477, -517, 477, -1491, 498]
+          
+  - platform: template
+    name: edge_clean
+    turn_on_action:
+      - globals.set:
+          id: robot_action
+          value: '4'
+      - globals.set:
+          id: vaccum_power_level
+          value: '1'
+      - remote_transmitter.transmit_raw:
+          carrier_frequency: 38khz
+          code: [2912, -3070, 498, -519, 473, -1494, 497, -1494, 496, -519, 475, -1494, 494, -521, 474, -521, 473, -522, 473, -1493, 411, -604, 473, -522, 472, -1496, 493, -1495, 497, -1494, 411, -603, 475, -520, 476, -518, 474, -521, 473, -522, 474, -1492,
+495, -521, 473, -522, 474, -520, 475, -519, 475, -520, 474, -520, 475, -1491, 498, -518, 476, -1493, 498, -1491, 496, -1492, 498, -519, 474, -1493, 497, -1491, 500, -1488, 500, -1492, 500, -1488, 500, -1490, 499, -1492, 497, -1488, 502, -517, 477,
+-1491, 498, -518, 477, -517, 477, -518, 475, -518, 476, -518, 476, -1492, 498]
+          
+  - platform: template
+    name: power_boost_iq
+    turn_on_action:
+      - globals.set:
+          id: vaccum_power_level
+          value: '2'
+      - remote_transmitter.transmit_raw:
+          carrier_frequency: 38khz
+          code: [2971, -3010, 515, -470, 493, -1506, 484, -1506, 510, -490, 469, -1515, 472, -544, 459, -516, 477, -516, 481, -537, 455, -516, 480, -514, 483, -1506, 474, -1517, 481, -1509, 506, -487, 479, -1510, 513, -504, 458, -538, 459, -534, 460, -1508,
+510, -506, 460, -514, 479, -514, 504, -493, 489, -526, 458, -515, 479, -1508, 511, -485, 480, -1510, 468, -527, 478, -1509, 482, -515, 506, -1483, 490, -1497, 512, -1480, 508, -1479, 482, -1509, 507, -1483, 509, -1481, 507, -1482, 490, -1499, 509,
+-486, 479, -1511, 507, -1481, 513, -1477, 482, -1478, 539, -1480, 510, -487, 478]
+
+  - platform: template
+    name: power_max
+    turn_on_action:
+      - globals.set:
+          id: vaccum_power_level
+          value: '1'
+      - remote_transmitter.transmit_raw:
+          carrier_frequency: 38khz
+          code: [2910, -3070, 528, -489, 479, -1490, 500, -1490, 499, -516, 478, -1491, 499, -517, 477, -518, 477, -517, 477, -518, 477, -517, 477, -518, 477, -1490, 498, -1492, 499, -1491, 500, -516, 478, -517, 477, -517, 478, -517, 477, -517, 478, -1491,
+499, -516, 478, -517, 477, -518, 476, -518, 476, -519, 477, -517, 478, -1489, 500, -516, 479, -1492, 498, -517, 477, -1491, 499, -1490, 499, -1402, 589, -1489, 500, -1491, 498, -1492, 498, -1491, 500, -1490, 500, -1491, 498, -1491, 499, -1491, 499,
+-516, 478, -1489, 501, -1490, 500, -1491, 499, -1489, 449, -1542, 500, -516, 478]
+                    
+  - platform: template
+    name: go_up
+    turn_on_action:
+      - remote_transmitter.transmit_raw:
+          carrier_frequency: 38khz
+          code: [2985, -2995, 500, -515, 476, -1491, 498, -1487, 501, -518, 476, -1489, 499, -519, 475, -519, 474, -519, 476, -518, 475, -519, 475, -1492, 497, -517, 476, -1490, 499, -1491, 498, -517, 476, -1491, 491, -525, 476, -518, 476, -518, 475, -519,
+475, -519, 475, -519, 475, -518, 476, -1490, 498, -518, 476, -519, 475, -520, 474, -1490, 499, -1490, 499, -518, 476, -518, 475, -1491, 497, -519, 475, -519, 475, -519, 478, -516, 475, -519, 475, -519, 475, -518, 476, -519, 474, -1491, 499, -518, 475,
+-1491, 498, -519, 476, -1489, 499, -1490, 499, -1491, 497, -1495, 494]
+          
+  - platform: template
+    name: go_down
+    turn_on_action:
+      - remote_transmitter.transmit_raw:
+          carrier_frequency: 38khz
+          code: [2983, -2994, 525, -491, 478, -1487, 501, -1490, 499, -518, 476, -1491, 498, -518, 476, -518, 477, -518, 475, -518, 476, -1491, 498, -1492, 497, -1489, 500, -1490, 498, -1490, 499, -517, 477, -1490, 499, -516, 477, -518, 476, -518, 476,
+-517, 477, -518, 475, -518, 476, -518, 476, -1491, 498, -517, 476, -518, 476, -518, 476, -1488, 500, -1490, 498, -518, 477, -1490, 498, -517, 477, -518, 476, -518, 476, -518, 476, -518, 475, -518, 480, -514, 476, -518, 476, -517, 477, -519, 474, -518,
+476, -518, 476, -518, 476, -517, 476, -518, 476, -518, 476, -518, 476]
+          
+  - platform: template
+    name: go_left
+    turn_on_action:
+      - remote_transmitter.transmit_raw:
+          carrier_frequency: 38khz
+          code: [2982, -2995, 526, -489, 479, -1489, 500, -1488, 500, -515, 479, -1488, 500, -517, 477, -517, 477, -517, 477, -518, 476, -517, 477, -1489, 500, -1487, 502, -1489, 500, -1487, 500, -516, 478, -1489, 500, -516, 477, -518, 479, -514, 477, -517,
+477, -517, 477, -520, 474, -517, 477, -1488, 500, -517, 476, -518, 477, -516, 477, -1489, 500, -1489, 499, -516, 478, -1489, 499, -517, 477, -517, 477, -517, 477, -517, 479, -515, 476, -518, 476, -517, 477, -518, 475, -519, 475, -1491, 498, -1490, 499,
+-517, 477, -518, 475, -518, 476, -519, 475, -519, 475, -518, 480]
+          
+  - platform: template
+    name: go_right
+    turn_on_action:
+      - remote_transmitter.transmit_raw:
+          carrier_frequency: 38khz
+          code: [2982, -2996, 490, -528, 465, -1499, 487, -1502, 488, -528, 465, -1500, 493, -523, 467, -528, 467, -527, 465, -528, 467, -1498, 489, -1498, 490, -528, 465, -1501, 488, -1499, 490, -527, 466, -1502, 487, -528, 466, -529, 464, -530, 465, -528,
+465, -529, 465, -530, 465, -527, 466, -1499, 492, -524, 466, -529, 465, -529, 465, -1499, 489, -1499, 488, -531, 465, -1500, 487, -1500, 488, -529, 466, -529, 466, -527, 465, -529, 467, -527, 465, -528, 466, -528, 469, -525, 464, -1501, 486, -1502,
+488, -1500, 489, -1500, 488, -527, 467, -528, 466, -528, 467, -1498, 490]
+
+  - platform: template
+    name: clear_schedule
+    turn_on_action:
+      - remote_transmitter.transmit_raw:
+          carrier_frequency: 38khz
+          code: [2916, -3066, 416, -580, 416, -1571, 469, -1521, 417, -579, 415, -1572, 415, -580, 416, -579, 415, -580, 415, -1501, 488, -1570, 419, -578, 410, -1578, 412, -1579, 416, -1573, 416, -579, 411, -584, 413, -580, 415, -580, 415, -579, 416,
+-1571, 416, -580, 416, -578, 415, -579, 465, -1523, 417, -579, 416, -578, 416, -1571, 416, -1573, 414, -583, 415, -579, 415, -1573, 416, -1572, 417, -1573, 417, -1573, 417, -1570, 417, -1573, 418, -1573, 416, -1573, 416, -1573, 416, -1573, 417, -1572,
+418, -577, 416, -578, 415, -580, 415, -579, 415, -1573, 416, -1572, 416, -1574, 416]
+
