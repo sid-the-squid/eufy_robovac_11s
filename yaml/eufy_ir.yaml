@@ -133,6 +133,9 @@ text_sensor:
         else if (id(robot_action)==4){
           return {"edge clean"};
         }
+        else if (id(robot_action)==5){
+          return {"going home"};
+        }
         else{
           id(robot_action)=0;
           return {"Ready"};
