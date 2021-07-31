@@ -49,7 +49,7 @@ I found the blue LED could be a simple binary_sensor, but the Red and Orange LED
 I also found out the start commands, (auto start, edge mode, spot clean, single room) actually also set the vacuum power level as part of the command, so I captured all at max power level, my house is small so I don’t need the battery savings of Boost IQ, and found ‘standard’ power level a bit too low.
 I captured almost all the commands (at max_power level), except the timeset, and schedule set commands, as not sure how they breakdown, and with Homeassistant automations I really don’t need them.
 
-![HA controls](/pictures/HA controls.PNG)
+![HA controls](/pictures/HAcontrols.PNG)
 
 
 Possible future ideas.
