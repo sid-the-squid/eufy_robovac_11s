@@ -8,16 +8,16 @@ Being the 11S this is not a smart vac, but instead more in line with the origina
 
 
 After opening up the mainboard is nice and visible, including what appears to be pins for a ‘serial wire debug’ interface, now using SWD on an arm chip is well beyond my realms of experience, but it does provide a handy source of 3.3V and ground pins, which remain live all the time the main power switch (underneath the robot) is on.
-![mainboard](\pictures\main_board.jpg)
+![mainboard](/pictures/main_board.jpg)
 
 Probing the top LED board, it seems there are actually 3 LED lights there, one Red, one Orange, and One blue, and 3 different wires to trigger each one, which is great news as we can use that to provide some feedback to our ESP device.
 We’ve got 3 LED trigger wires which also run at 3.3V, I guess the main arm chip is 3.3V internally, which is great as now we can provide some feedback.
-![led board](\pictures\top_led_panel_wires.jpg)
+![led board](/pictures/top_led_panel_wires.jpg)
 
 Sadly I could find no trace of a standard UART interface, looking at some disassembly’s of Eufy Robovac 30c and 15c, both models sharing the same chassis as our 11s but having WiFi, it seems the WiFi modules on those two are on a separate board with TxRx pins, so I may try modding one of those in the future.  (update and now I have [link](https://github.com/sid-the-squid/eufy_robovac_30c))
 
 Anyway back to our 11S, so we’ve found our power source, I found a nice mounting point for our mini d1, at the back near the main power switch (Edit; this is where the wifi antenna on the 30C lives)
-![minid1 and IR led](\pictures\mini_d1_and_led_installed.jpg)
+![minid1 and IR led](/pictures/mini_d1_and_led_installed.jpg)
 
 On the ESP mini d1, we have
 * 3.3V, GND
@@ -30,13 +30,13 @@ On the LED board I used
 * Brown wire for D8 (Blue)
 * Orange for D7 (Orange LED)
 * Yellow for D6 (Red LED)
-![mini d1 wires](\pictures\mini_d1_wires.jpg)
+![mini d1 wires](/pictures/mini_d1_wires.jpg)
 
 You’ll see in the wiring on the mini d1, I connected 7 wires, instead of the 6 we actually require, I had it in my mind originally to have an IR Receiver as well as a transmitter, but as the robovac never actually talks back to the remote control, the receiver part is pointless.
 
 
 Sadly these wires alone were not long enough to reach the mini d1 in the position I placed it, so I had to connect a further 3 wires, brown to blue, orange to purple, and yellow to gray, apologies for the confusion, I really should buy more assorted lengths of wire, oh my.
-![wires from LED](\pictures\front_view.jpg)
+![wires from LED](/pictures/front_view.jpg)
 
 For our IR LED transmitter we don’t really need or want any great range, hence we can run the LED at 3.3v straight from our GPIO pins, no need for a 5V supply or a transistor to make it work.
 
@@ -48,7 +48,8 @@ I found the blue LED could be a simple binary_sensor, but the Red and Orange LED
 
 I also found out the start commands, (auto start, edge mode, spot clean, single room) actually also set the vacuum power level as part of the command, so I captured all at max power level, my house is small so I don’t need the battery savings of Boost IQ, and found ‘standard’ power level a bit too low.
 I captured almost all the commands (at max_power level), except the timeset, and schedule set commands, as not sure how they breakdown, and with Homeassistant automations I really don’t need them.
-![my HA controls](\pictures\HA controls.PNG)
+
+![HA controls](/pictures/HA controls.PNG)
 
 
 Possible future ideas.
